@@ -38,14 +38,14 @@ MINIMAP_FILES: dict[str, str] = {
 
 # Visual encoding for each event type (FR-3.2)
 EVENT_STYLE: dict[str, dict] = {
-    "Position":       {"color": "#4A90D9", "symbol": "circle",         "size": 4,  "label": "Position (human)"},
-    "BotPosition":    {"color": "#9E9E9E", "symbol": "circle",         "size": 3,  "label": "Bot Position"},
-    "Kill":           {"color": "#E53935", "symbol": "x",              "size": 10, "label": "Kill"},
-    "Killed":         {"color": "#FF7043", "symbol": "triangle-down",  "size": 9,  "label": "Killed"},
-    "BotKill":        {"color": "#B71C1C", "symbol": "x-open",         "size": 9,  "label": "Bot Kill"},
-    "BotKilled":      {"color": "#EF9A9A", "symbol": "triangle-down-open", "size": 8, "label": "Bot Killed"},
-    "KilledByStorm":  {"color": "#9C27B0", "symbol": "diamond",        "size": 10, "label": "Killed by Storm"},
-    "Loot":           {"color": "#FFD600", "symbol": "star",           "size": 9,  "label": "Loot"},
+    "Position":       {"color": "#4A90D9", "symbol": "circle",      "size": 6,  "label": "Position (human)"},
+    "BotPosition":    {"color": "#9E9E9E", "symbol": "circle",      "size": 4,  "label": "Bot Position"},
+    "Kill":           {"color": "#E53935", "symbol": "x",           "size": 15, "label": "Kill"},
+    "Killed":         {"color": "#FF7043", "symbol": "circle",      "size": 12, "label": "Killed"},
+    "BotKill":        {"color": "#B71C1C", "symbol": "diamond",     "size": 12, "label": "Bot Kill"},
+    "BotKilled":      {"color": "#EF9A9A", "symbol": "triangle-up", "size": 10, "label": "Bot Killed"},
+    "KilledByStorm":  {"color": "#9C27B0", "symbol": "star",        "size": 14, "label": "Killed by Storm"},
+    "Loot":           {"color": "#FFD600", "symbol": "star",        "size": 12, "label": "Loot"},
 }
 
 ALL_EVENTS = list(EVENT_STYLE.keys())
@@ -147,9 +147,15 @@ with st.sidebar:
         horizontal=True,
         label_visibility="collapsed",
     )
-    heatmap_opacity = 0.6
+    heatmap_opacity = 0.65
     if heatmap_mode != "Off":
-        heatmap_opacity = st.slider("Opacity", 0.2, 0.9, 0.6, 0.05)
+        heatmap_opacity = st.slider("Opacity", 0.2, 0.9, 0.65, 0.05)
+        _captions = {
+            "Traffic": "Black = no players. Red = high player concentration.",
+            "Kill":    "Black = no kills. Red = kill hotspot.",
+            "Death":   "Black = no deaths. Red = high death zone.",
+        }
+        st.caption(_captions[heatmap_mode])
 
     st.divider()
 
@@ -247,7 +253,13 @@ def build_figure(
                     y=np.linspace(0, IMAGE_SIZE, grid.shape[0]),
                     colorscale="Hot",
                     opacity=heatmap_opacity,
-                    showscale=False,
+                    showscale=True,
+                    colorbar=dict(
+                        title="Player density",
+                        thickness=15,
+                        len=0.5,
+                        x=1.02,
+                    ),
                     hoverinfo="skip",
                     name=f"{heatmap_mode} heatmap",
                 )
