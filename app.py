@@ -78,6 +78,23 @@ st.set_page_config(
 )
 
 # ---------------------------------------------------------------------------
+# Diagnostic — remove after confirming minimap paths on Streamlit Cloud
+# ---------------------------------------------------------------------------
+
+import os as _os
+st.write("Working directory:", _os.getcwd())
+st.write("Files in root:", _os.listdir("."))
+_minimap_dir = "Player_data/minimaps"
+if _os.path.exists(_minimap_dir):
+    st.write("Minimap files found:", _os.listdir(_minimap_dir))
+    for _f in _os.listdir(_minimap_dir):
+        _full = _os.path.join(_minimap_dir, _f)
+        _size = _os.path.getsize(_full)
+        st.write(f"{_f}: {_size/1024:.1f} KB")
+else:
+    st.write("Minimap directory NOT FOUND")
+
+# ---------------------------------------------------------------------------
 # Load data (cached)
 # ---------------------------------------------------------------------------
 
