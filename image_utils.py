@@ -65,7 +65,7 @@ def _dark_fallback() -> np.ndarray:
     return arr
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, version=2)
 def load_minimap(path: str) -> np.ndarray:
     """Load a minimap image, resize to 1024x1024, and return as RGBA uint8 array.
 
@@ -85,6 +85,11 @@ def load_minimap(path: str) -> np.ndarray:
         numpy array of shape (1024, 1024, 4) with dtype uint8.
         Returns a dark fallback array instead of raising if the file is missing.
     """
+    # TEMP DEBUG — remove after fix confirmed
+    import sys
+    print(f"load_minimap called with: {path}", file=sys.stderr)
+    print(f"file exists: {os.path.isfile(path)}", file=sys.stderr)
+
     # Step 1 — try the path as given
     resolved = path if os.path.isfile(path) else _resolve_path_case_insensitive(path)
 
