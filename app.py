@@ -266,11 +266,10 @@ def build_figure(
     fig = go.Figure()
 
     # --- Base layer: minimap image (pre-resized to 1024x1024, cached) ---
-    try:
-        img_array = load_minimap(MINIMAP_FILES[selected_map])
-        fig.add_trace(go.Image(z=img_array, name="minimap"))
-    except Exception:
-        st.warning(f"Could not load minimap for {selected_map}.")
+    # load_minimap never raises — returns a dark fallback array if the file
+    # is missing or unreadable, so markers and heatmaps still display correctly.
+    img_array = load_minimap(MINIMAP_FILES[selected_map])
+    fig.add_trace(go.Image(z=img_array, name="minimap"))
 
     # --- Heatmap overlay ---
     if heatmap_mode != "Off" and not df.empty:
