@@ -40,17 +40,30 @@ MINIMAP_FILES: dict[str, str] = {
 # opacity key: per-event override; absent = use the sidebar marker_opacity slider.
 # BotPosition uses white so it needs a fixed lower opacity to stay distinguishable.
 EVENT_STYLE: dict[str, dict] = {
-    "Position":       {"color": "#00FFFF", "symbol": "circle",      "size": 9,  "label": "Position (human)"},
-    "BotPosition":    {"color": "#FFFFFF", "symbol": "circle",      "size": 6,  "label": "Bot Position",    "opacity": 0.6},
-    "Kill":           {"color": "#FF0000", "symbol": "x",           "size": 22, "label": "Kill"},
-    "Killed":         {"color": "#FF6600", "symbol": "circle",      "size": 18, "label": "Killed"},
-    "BotKill":        {"color": "#FF4444", "symbol": "diamond",     "size": 18, "label": "Bot Kill"},
-    "BotKilled":      {"color": "#FF8888", "symbol": "triangle-up", "size": 15, "label": "Bot Killed"},
-    "KilledByStorm":  {"color": "#CC00FF", "symbol": "star",        "size": 21, "label": "Killed by Storm"},
-    "Loot":           {"color": "#FFE000", "symbol": "star",        "size": 18, "label": "Loot"},
+    # Color = WHAT happened. Shape = WHO was involved.
+    "Position":      {"color": "#00BFFF", "symbol": "circle",        "size": 6,  "label": "Position (Human)", "tooltip": "Human player position"},
+    "BotPosition":   {"color": "#888888", "symbol": "circle",        "size": 5,  "label": "Bot Position",     "tooltip": "Bot position"},
+    "Kill":          {"color": "#FF0000", "symbol": "circle",        "size": 14, "label": "Kill",             "tooltip": "Human eliminated another human"},
+    "Killed":        {"color": "#FF6600", "symbol": "triangle-down", "size": 15, "label": "Killed",           "tooltip": "Human was eliminated by another human"},
+    "BotKill":       {"color": "#CC0000", "symbol": "triangle-up",   "size": 13, "label": "Bot Kill",         "tooltip": "Human eliminated a bot"},
+    "BotKilled":     {"color": "#FF9999", "symbol": "square",        "size": 11, "label": "Bot Killed",       "tooltip": "Human was eliminated by a bot"},
+    "KilledByStorm": {"color": "#CC00FF", "symbol": "triangle-up",   "size": 16, "label": "Killed by Storm",  "tooltip": "Player died to the storm"},
+    "Loot":          {"color": "#FFE000", "symbol": "circle",        "size": 12, "label": "Loot",             "tooltip": "Player picked up an item"},
 }
 
 ALL_EVENTS = list(EVENT_STYLE.keys())
+
+# Human-readable names shown in the Plotly figure legend (bottom-right corner)
+_TRACE_NAMES: dict[str, str] = {
+    "Kill":          "Kill — Human eliminated human",
+    "Killed":        "Killed — Eliminated by human",
+    "BotKill":       "Bot Kill — Human eliminated bot",
+    "BotKilled":     "Bot Killed — Eliminated by bot",
+    "KilledByStorm": "Killed by Storm — Died to storm",
+    "Loot":          "Loot — Item picked up",
+    "Position":      "Position (Human) — Player was here",
+    "BotPosition":   "Bot Position — Bot was here",
+}
 IMAGE_SIZE = 1024
 
 # ---------------------------------------------------------------------------
@@ -199,14 +212,19 @@ with st.sidebar:
     st.divider()
 
     # --- Legend ---
-    st.markdown("**Legend**")
-    for event, style in EVENT_STYLE.items():
-        color = style["color"]
-        label = style["label"]
-        st.markdown(
-            f'<span style="color:{color}; font-size:16px;">●</span> {label}',
-            unsafe_allow_html=True,
-        )
+    st.sidebar.markdown("### Map Legend")
+    st.sidebar.markdown("**What happened**")
+    st.sidebar.markdown('<span style="color:#FF0000">●</span> **Kill** — Human eliminated another human', unsafe_allow_html=True)
+    st.sidebar.markdown('<span style="color:#FF6600">▽</span> **Killed** — Human was eliminated by another human', unsafe_allow_html=True)
+    st.sidebar.markdown('<span style="color:#CC0000">△</span> **Bot Kill** — Human eliminated a bot', unsafe_allow_html=True)
+    st.sidebar.markdown('<span style="color:#FF9999">■</span> **Bot Killed** — Human was killed by a bot', unsafe_allow_html=True)
+    st.sidebar.markdown('<span style="color:#CC00FF">△</span> **Killed by Storm** — Player died to the storm', unsafe_allow_html=True)
+    st.sidebar.markdown('<span style="color:#FFE000">●</span> **Loot** — Item picked up here', unsafe_allow_html=True)
+    st.sidebar.markdown('<span style="color:#00BFFF">●</span> **Position (Human)** — Human player was here', unsafe_allow_html=True)
+    st.sidebar.markdown('<span style="color:#888888">●</span> **Bot Position** — Bot was here', unsafe_allow_html=True)
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("🎨 **Color** → Red: Combat | Purple: Storm | Gold: Loot")
+    st.sidebar.markdown("🔷 **Shape** → Circle: Human | Triangle: Bot involved | Square: Killed by bot")
 
 # ---------------------------------------------------------------------------
 # Filter dataframe
@@ -296,7 +314,7 @@ def build_figure(
             move = journey[journey["event"].isin({"Position", "BotPosition"})]
             if not move.empty:
                 fig.add_trace(
-                    go.Scatter(
+                    go.Scattergl(
                         x=move["px_x"],
                         y=move["px_y"],
                         mode="lines",
@@ -310,7 +328,7 @@ def build_figure(
             # Start marker (green circle)
             start = journey.iloc[0]
             fig.add_trace(
-                go.Scatter(
+                go.Scattergl(
                     x=[start["px_x"]],
                     y=[start["px_y"]],
                     mode="markers",
@@ -324,7 +342,7 @@ def build_figure(
             # End marker (red X)
             end = journey.iloc[-1]
             fig.add_trace(
-                go.Scatter(
+                go.Scattergl(
                     x=[end["px_x"]],
                     y=[end["px_y"]],
                     mode="markers",
@@ -343,7 +361,7 @@ def build_figure(
                 for _, row in key_events.iterrows():
                     style = EVENT_STYLE.get(row["event"], {})
                     fig.add_trace(
-                        go.Scatter(
+                        go.Scattergl(
                             x=[row["px_x"]],
                             y=[row["px_y"]],
                             mode="markers",
@@ -360,16 +378,36 @@ def build_figure(
                     )
 
     # --- Event markers (scatter layer) ---
+    # ts_base: used to compute human-readable elapsed time per marker.
+    # Falls back to 0 if df is empty or ts is all-NaN.
+    ts_base = int(df["ts"].min()) if not df.empty and df["ts"].notna().any() else 0
+
     if not df.empty and heatmap_mode == "Off":
         for event_type in selected_events:
             subset = df[df["event"] == event_type]
             if subset.empty:
                 continue
             style = EVENT_STYLE[event_type]
-            # Per-event opacity override (e.g. white BotPosition) else use slider value
             opacity = style.get("opacity", marker_opacity)
+
+            # Pre-format elapsed time as "Xm XXs into match" for hover tooltip
+            elapsed_s = (subset["ts"] - ts_base).clip(lower=0).fillna(0).astype(int)
+            elapsed_str = elapsed_s.apply(lambda s: f"{s // 60}m {s % 60:02d}s into match")
+
+            # Non-circle markers (triangles, squares) produce white particle/dust
+            # artifacts in Scattergl when rendered with partial opacity or a visible
+            # outline. Fix: force opacity=1.0 and zero-width transparent outline.
+            # Circle markers are unaffected — keep their white outline.
+            is_circle = style["symbol"] == "circle"
+            marker_line = (
+                dict(color="white", width=1.5)
+                if is_circle
+                else dict(width=0, color="rgba(0,0,0,0)")
+            )
+            marker_fill_opacity = opacity if is_circle else 1.0
+
             fig.add_trace(
-                go.Scatter(
+                go.Scattergl(
                     x=subset["px_x"],
                     y=subset["px_y"],
                     mode="markers",
@@ -377,17 +415,17 @@ def build_figure(
                         color=style["color"],
                         size=style["size"],
                         symbol=style["symbol"],
-                        opacity=opacity,
-                        line=dict(color="white", width=1.5),
+                        opacity=marker_fill_opacity,
+                        line=marker_line,
                     ),
-                    name=style["label"],
+                    name=_TRACE_NAMES.get(event_type, style["label"]),
                     hovertemplate=(
                         f"<b>{style['label']}</b><br>"
-                        "x: %{customdata[0]:.1f}<br>"
-                        "z: %{customdata[1]:.1f}<br>"
+                        f"{style['tooltip']}<br>"
+                        "%{customdata[0]}"
                         "<extra></extra>"
                     ),
-                    customdata=subset[["x", "z"]].values,
+                    customdata=elapsed_str.astype(str).to_numpy().reshape(-1, 1),
                 )
             )
 
@@ -409,12 +447,16 @@ def build_figure(
         margin=dict(l=0, r=0, t=0, b=0),
         paper_bgcolor="black",
         plot_bgcolor="black",
+        showlegend=True,
         legend=dict(
+            x=1.0,
+            y=0.0,
+            xanchor="right",
+            yanchor="bottom",
             bgcolor="rgba(0,0,0,0.7)",
+            bordercolor="rgba(255,255,255,0.2)",
+            borderwidth=1,
             font=dict(color="white", size=11),
-            x=1.01,
-            y=1,
-            xanchor="left",
         ),
         height=700,
         dragmode="pan",
