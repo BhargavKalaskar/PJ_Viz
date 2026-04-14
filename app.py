@@ -37,15 +37,17 @@ MINIMAP_FILES: dict[str, str] = {
 }
 
 # Visual encoding for each event type (FR-3.2)
+# opacity key: per-event override; absent = use the sidebar marker_opacity slider.
+# BotPosition uses white so it needs a fixed lower opacity to stay distinguishable.
 EVENT_STYLE: dict[str, dict] = {
-    "Position":       {"color": "#4A90D9", "symbol": "circle",      "size": 6,  "label": "Position (human)"},
-    "BotPosition":    {"color": "#9E9E9E", "symbol": "circle",      "size": 4,  "label": "Bot Position"},
-    "Kill":           {"color": "#E53935", "symbol": "x",           "size": 15, "label": "Kill"},
-    "Killed":         {"color": "#FF7043", "symbol": "circle",      "size": 12, "label": "Killed"},
-    "BotKill":        {"color": "#B71C1C", "symbol": "diamond",     "size": 12, "label": "Bot Kill"},
-    "BotKilled":      {"color": "#EF9A9A", "symbol": "triangle-up", "size": 10, "label": "Bot Killed"},
-    "KilledByStorm":  {"color": "#9C27B0", "symbol": "star",        "size": 14, "label": "Killed by Storm"},
-    "Loot":           {"color": "#FFD600", "symbol": "star",        "size": 12, "label": "Loot"},
+    "Position":       {"color": "#00FFFF", "symbol": "circle",      "size": 9,  "label": "Position (human)"},
+    "BotPosition":    {"color": "#FFFFFF", "symbol": "circle",      "size": 6,  "label": "Bot Position",    "opacity": 0.6},
+    "Kill":           {"color": "#FF0000", "symbol": "x",           "size": 22, "label": "Kill"},
+    "Killed":         {"color": "#FF6600", "symbol": "circle",      "size": 18, "label": "Killed"},
+    "BotKill":        {"color": "#FF4444", "symbol": "diamond",     "size": 18, "label": "Bot Kill"},
+    "BotKilled":      {"color": "#FF8888", "symbol": "triangle-up", "size": 15, "label": "Bot Killed"},
+    "KilledByStorm":  {"color": "#CC00FF", "symbol": "star",        "size": 21, "label": "Killed by Storm"},
+    "Loot":           {"color": "#FFE000", "symbol": "star",        "size": 18, "label": "Loot"},
 }
 
 ALL_EVENTS = list(EVENT_STYLE.keys())
@@ -66,7 +68,7 @@ st.set_page_config(
 # Load data (cached)
 # ---------------------------------------------------------------------------
 
-df_all = load_all_data(str(DATA_ROOT))
+data = load_all_data(str(DATA_ROOT))
 
 # ---------------------------------------------------------------------------
 # Sidebar — Filters
@@ -103,15 +105,26 @@ with st.sidebar:
     st.divider()
 
     # --- Match filter ---
-    df_map_date = df_all[
-        (df_all["map_id"] == selected_map) & (df_all["date"].isin(selected_dates))
-    ]
+    # Start from the pre-filtered per-map DataFrame (~3× fewer rows than full dataset).
+    df_map = data[selected_map]
+    _all_dates = set(DATE_FOLDERS.values())
+    df_map_date = (
+        df_map
+        if set(selected_dates) == _all_dates
+        else df_map[df_map["date"].isin(selected_dates)]
+    )
     if player_type == "Humans only":
         df_map_date = df_map_date[~df_map_date["is_bot"]]
     elif player_type == "Bots only":
         df_map_date = df_map_date[df_map_date["is_bot"]]
 
-    match_options_map = get_match_options(df_map_date)
+    # Use pre-computed match options for the default case (all dates, all players).
+    # Recompute only when the date or player filter is narrowed — starting from the
+    # already-small per-map DataFrame, so groupby cost is ~3× lower than before.
+    if set(selected_dates) == _all_dates and player_type == "Humans + Bots":
+        match_options_map = data["match_options"][selected_map]
+    else:
+        match_options_map = get_match_options(df_map_date)
     match_display_labels = ["All matches"] + list(match_options_map.keys())
     selected_match_label = st.selectbox("Match", match_display_labels, index=0)
     selected_match_id = (
@@ -135,6 +148,8 @@ with st.sidebar:
         )
         if checked:
             selected_events.append(event)
+
+    marker_opacity = st.slider("Marker opacity", 0.3, 1.0, 0.9, 0.05)
 
     st.divider()
 
@@ -197,6 +212,8 @@ with st.sidebar:
 # Filter dataframe
 # ---------------------------------------------------------------------------
 
+_t0 = time.perf_counter()
+
 df_filtered = df_map_date.copy()
 if selected_match_id:
     df_filtered = df_filtered[df_filtered["match_id"] == selected_match_id]
@@ -205,6 +222,8 @@ if selected_events:
 
 # Add pixel coordinates
 df_filtered = add_pixel_coords(df_filtered)
+
+_t_filter_ms = (time.perf_counter() - _t0) * 1000
 
 # ---------------------------------------------------------------------------
 # Build Plotly figure
@@ -218,6 +237,7 @@ def build_figure(
     heatmap_opacity: float,
     selected_events: tuple,
     selected_player_id: str | None,
+    marker_opacity: float = 0.9,
 ) -> go.Figure:
     """Build the Plotly map figure.
 
@@ -346,6 +366,8 @@ def build_figure(
             if subset.empty:
                 continue
             style = EVENT_STYLE[event_type]
+            # Per-event opacity override (e.g. white BotPosition) else use slider value
+            opacity = style.get("opacity", marker_opacity)
             fig.add_trace(
                 go.Scatter(
                     x=subset["px_x"],
@@ -355,8 +377,8 @@ def build_figure(
                         color=style["color"],
                         size=style["size"],
                         symbol=style["symbol"],
-                        opacity=0.7,
-                        line=dict(color="rgba(0,0,0,0.3)", width=0.5),
+                        opacity=opacity,
+                        line=dict(color="white", width=1.5),
                     ),
                     name=style["label"],
                     hovertemplate=(
@@ -490,6 +512,7 @@ if selected_match_id:
         df_filtered = df_filtered[df_filtered["ts"] <= ts_min + timeline_val]
 
 # Map viewport — rendered after the slider so frontend thread is not blocked
+_t1 = time.perf_counter()
 fig = build_figure(
     df_filtered,
     selected_map,
@@ -497,7 +520,10 @@ fig = build_figure(
     heatmap_opacity,
     tuple(selected_events),   # list → tuple so st.cache_data can hash it
     selected_player_id,
+    marker_opacity,
 )
+_t_figure_ms = (time.perf_counter() - _t1) * 1000
+
 st.plotly_chart(
     fig,
     width='stretch',
@@ -513,5 +539,6 @@ st.plotly_chart(
 st.caption(
     "Data: LILA BLACK production telemetry, Feb 10–14 2026 · "
     "Built with Streamlit + Plotly · "
-    f"Showing {total_events:,} of {len(df_all):,} total events"
+    f"Showing {total_events:,} of {len(data['all']):,} total events · "
+    f"Filter: {_t_filter_ms:.0f}ms · Figure: {_t_figure_ms:.0f}ms"
 )

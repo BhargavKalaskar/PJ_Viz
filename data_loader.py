@@ -134,7 +134,33 @@ def load_all_data(data_root: str) -> pd.DataFrame:
         combined["match_id"].astype(str).str.replace(r"\.nakama-0$", "", regex=True)
     )
 
-    return combined
+    # Convert frequently-filtered string columns to categoricals.
+    # Categorical filtering is 5–10× faster than string filtering in pandas
+    # because comparisons operate on integer codes, not string data.
+    combined["event"]  = combined["event"].astype("category")
+    combined["map_id"] = combined["map_id"].astype("category")
+    combined["date"]   = combined["date"].astype("category")
+
+    # Pre-split by map. Map selection is the first filter on every interaction;
+    # starting from ~30k rows instead of ~89k rows makes every subsequent
+    # filter and groupby ~3× faster.
+    map_dfs: dict[str, pd.DataFrame] = {
+        map_id: combined[combined["map_id"] == map_id].reset_index(drop=True)
+        for map_id in ("AmbroseValley", "GrandRift", "Lockdown")
+    }
+
+    # Pre-compute match-dropdown options per map so the sidebar groupby never
+    # runs at render time (only runs once here at startup).
+    match_options_cache: dict[str, dict[str, str]] = {
+        map_id: get_match_options(df)
+        for map_id, df in map_dfs.items()
+    }
+
+    return {
+        "all": combined,
+        **map_dfs,
+        "match_options": match_options_cache,
+    }
 
 
 def get_match_options(df: pd.DataFrame) -> dict[str, str]:

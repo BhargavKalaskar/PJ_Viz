@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import streamlit as st
 
 # Event type groupings
 KILL_EVENTS   = {"Kill", "BotKill"}
@@ -56,6 +57,7 @@ def build_density_grid(
     return grid.T
 
 
+@st.cache_data(max_entries=20, show_spinner=False)
 def get_kill_heatmap(df: pd.DataFrame, bins: int = DEFAULT_BINS) -> np.ndarray:
     """Density grid for Kill + BotKill events.
 
@@ -70,6 +72,7 @@ def get_kill_heatmap(df: pd.DataFrame, bins: int = DEFAULT_BINS) -> np.ndarray:
     return build_density_grid(subset["px_x"], subset["px_y"], bins)
 
 
+@st.cache_data(max_entries=20, show_spinner=False)
 def get_death_heatmap(df: pd.DataFrame, bins: int = DEFAULT_BINS) -> np.ndarray:
     """Density grid for Killed + BotKilled + KilledByStorm events.
 
@@ -84,6 +87,7 @@ def get_death_heatmap(df: pd.DataFrame, bins: int = DEFAULT_BINS) -> np.ndarray:
     return build_density_grid(subset["px_x"], subset["px_y"], bins)
 
 
+@st.cache_data(max_entries=20, show_spinner=False)
 def get_traffic_heatmap(df: pd.DataFrame, bins: int = DEFAULT_BINS) -> np.ndarray:
     """Density grid for Position + BotPosition events (player movement).
 
