@@ -65,7 +65,7 @@ def _dark_fallback() -> np.ndarray:
     return arr
 
 
-@st.cache_data(show_spinner=False, version=2)
+@st.cache_data(show_spinner=False)
 def load_minimap(path: str) -> np.ndarray:
     """Load a minimap image, resize to 1024x1024, and return as RGBA uint8 array.
 
