@@ -88,15 +88,22 @@ data = load_all_data(str(DATA_ROOT))
 # ---------------------------------------------------------------------------
 
 with st.sidebar:
-    st.title("🎮 LILA BLACK")
-    st.caption("Player Journey Visualization")
-    st.divider()
+    st.sidebar.markdown('''
+<div style="padding: 1rem 0; border-bottom: 2px solid #FF4B4B; margin-bottom: 1rem;">
+    <h2 style="color: #FF4B4B; margin: 0; font-size: 1.4rem;">⬛ LILA BLACK</h2>
+    <p style="color: #888; margin: 0.2rem 0 0 0; font-size: 0.8rem;">Player Journey Visualization</p>
+</div>
+''', unsafe_allow_html=True)
 
     # --- Map filter ---
+    st.sidebar.markdown("### 🗺️ Map Selection")
     map_options = list(MAP_CONFIG.keys())
     selected_map = st.selectbox("Map", map_options, index=0)
 
+    st.sidebar.divider()
+
     # --- Date filter ---
+    st.sidebar.markdown("### 📅 Date & Match")
     date_labels = ["All dates"] + list(DATE_FOLDERS.values())
     selected_dates = st.multiselect(
         "Date",
@@ -107,16 +114,6 @@ with st.sidebar:
     if not selected_dates:
         selected_dates = list(DATE_FOLDERS.values())
 
-    # --- Player type filter ---
-    player_type = st.radio(
-        "Player type",
-        ["Humans + Bots", "Humans only", "Bots only"],
-        index=0,
-        horizontal=True,
-    )
-
-    st.divider()
-
     # --- Match filter ---
     # Start from the pre-filtered per-map DataFrame (~3× fewer rows than full dataset).
     df_map = data[selected_map]
@@ -126,6 +123,17 @@ with st.sidebar:
         if set(selected_dates) == _all_dates
         else df_map[df_map["date"].isin(selected_dates)]
     )
+
+    # Player type applied before match options so the match list reflects the filter
+    st.sidebar.divider()
+    st.sidebar.markdown("### 👥 Player Filter")
+    player_type = st.radio(
+        "Player type",
+        ["Humans + Bots", "Humans only", "Bots only"],
+        index=0,
+        horizontal=True,
+    )
+
     if player_type == "Humans only":
         df_map_date = df_map_date[~df_map_date["is_bot"]]
     elif player_type == "Bots only":
@@ -146,10 +154,10 @@ with st.sidebar:
         else None
     )
 
-    st.divider()
+    st.sidebar.divider()
 
     # --- Event type filter ---
-    st.markdown("**Event types**")
+    st.sidebar.markdown("### 🎯 Event Types")
     selected_events: list[str] = []
     cols = st.columns(2)
     for i, event in enumerate(ALL_EVENTS):
@@ -164,10 +172,10 @@ with st.sidebar:
 
     marker_opacity = st.slider("Marker opacity", 0.3, 1.0, 0.9, 0.05)
 
-    st.divider()
+    st.sidebar.divider()
 
     # --- Heatmap mode ---
-    st.markdown("**Heatmap overlay**")
+    st.sidebar.markdown("### 🌡️ Heatmap")
     heatmap_mode = st.radio(
         "Type",
         ["Off", "Traffic", "Kill", "Death"],
@@ -185,7 +193,7 @@ with st.sidebar:
         }
         st.caption(_captions[heatmap_mode])
 
-    st.divider()
+    st.sidebar.divider()
 
     # --- Specific player filter (only when a match is selected) ---
     selected_player_id: str | None = None
@@ -445,8 +453,8 @@ def build_figure(
             showticklabels=False,
         ),
         margin=dict(l=0, r=0, t=0, b=0),
-        paper_bgcolor="black",
-        plot_bgcolor="black",
+        paper_bgcolor="#0e1117",
+        plot_bgcolor="#0e1117",
         showlegend=True,
         legend=dict(
             x=1.0,
