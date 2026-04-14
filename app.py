@@ -10,6 +10,7 @@ Run locally:
 
 from __future__ import annotations
 
+import os
 import time
 from pathlib import Path
 
@@ -27,13 +28,13 @@ from image_utils import load_minimap
 # Constants
 # ---------------------------------------------------------------------------
 
-DATA_ROOT = Path(__file__).parent / "Player_data"
-MINIMAP_DIR = DATA_ROOT / "minimaps"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_ROOT = Path(BASE_DIR) / "Player_data"
 
 MINIMAP_FILES: dict[str, str] = {
-    "AmbroseValley": str(MINIMAP_DIR / "AmbroseValley_Minimap.png"),
-    "GrandRift":     str(MINIMAP_DIR / "GrandRift_Minimap.png"),
-    "Lockdown":      str(MINIMAP_DIR / "Lockdown_Minimap.jpg"),
+    "AmbroseValley": os.path.join(BASE_DIR, "Player_data", "minimaps", "AmbroseValley_Minimap.png"),
+    "GrandRift":     os.path.join(BASE_DIR, "Player_data", "minimaps", "GrandRift_Minimap.png"),
+    "Lockdown":      os.path.join(BASE_DIR, "Player_data", "minimaps", "Lockdown_Minimap.jpg"),
 }
 
 # Visual encoding for each event type (FR-3.2)
@@ -76,23 +77,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
-
-# ---------------------------------------------------------------------------
-# Diagnostic — remove after confirming minimap paths on Streamlit Cloud
-# ---------------------------------------------------------------------------
-
-import os as _os
-st.write("Working directory:", _os.getcwd())
-st.write("Files in root:", _os.listdir("."))
-_minimap_dir = "Player_data/minimaps"
-if _os.path.exists(_minimap_dir):
-    st.write("Minimap files found:", _os.listdir(_minimap_dir))
-    for _f in _os.listdir(_minimap_dir):
-        _full = _os.path.join(_minimap_dir, _f)
-        _size = _os.path.getsize(_full)
-        st.write(f"{_f}: {_size/1024:.1f} KB")
-else:
-    st.write("Minimap directory NOT FOUND")
 
 # ---------------------------------------------------------------------------
 # Load data (cached)
