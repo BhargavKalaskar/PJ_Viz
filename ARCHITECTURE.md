@@ -1,11 +1,24 @@
 # ARCHITECTURE.md — Player Journey Visualization Tool
 
+## Visual References
+
+> These diagrams were created during the product planning phase before a single line of code was written.
+
+| Diagram | Description |
+|---|---|
+| [System Architecture Overview](Docs/system_architecture_overview.svg) | Three layer structure — data, processing, frontend |
+| [Data Flow Pipeline](Docs/data_flow_pipeline.svg) | Step by step from parquet file to map marker on screen |
+| [Level Designer User Flow](Docs/level_designer_user_flow.svg) | How the tool is actually used — three investigation modes |
+
+---
+
 ## Why This Architecture
 
-The tool needs to solve three specific problems:
+Three problems to solve:
+
 1. Load 1,243 parquet files fast enough that the app is usable
 2. Convert game-world coordinates to pixel positions accurately for all 3 maps
-3. Serve a live, shareable URL with no setup required on the recipient's end
+3. Serve a live shareable URL with no setup required on the recipient's end
 
 The architecture is intentionally simple — three layers, five files, one deploy target.
 
@@ -22,118 +35,134 @@ The architecture is intentionally simple — three layers, five files, one deplo
 └──────────────────────┬──────────────────────────┘
                        │
 ┌──────────────────────▼──────────────────────────┐
-│  PROCESSING LAYER  (Python, runs on Streamlit)  │
+│  PROCESSING LAYER  (Python, Streamlit Cloud)    │
 │  data_loader.py      →  reads + caches all data │
 │  coordinate_utils.py →  world (x,z) → pixel     │
 │  heatmap_utils.py    →  2D density grids        │
+│  image_utils.py      →  minimap resize + cache  │
 └──────────────────────┬──────────────────────────┘
                        │
 ┌──────────────────────▼──────────────────────────┐
 │  FRONTEND LAYER  (Streamlit UI in browser)      │
 │  app.py  →  sidebar filters                     │
-│          →  Plotly figure (image + markers)     │
-│          →  timeline slider + play              │
+│          →  Plotly Scattergl (WebGL markers)    │
+│          →  timeline slider + play button       │
+│          →  heatmap overlay + legend            │
 └─────────────────────────────────────────────────┘
                        │
             Streamlit Community Cloud
-            (free hosting, public URL)
+            https://3du9geedssvn6dwe9xjhvk.streamlit.app
 ```
 
 ---
 
 ## Data Flow — Step by Step
 
-**Step 1 — Startup cache**  
-`data_loader.load_all_data()` runs once and is decorated with `@st.cache_data`. It scans all 5 daily folders using `pyarrow.dataset.dataset()`, which reads parquet files in a single batch operation rather than a Python loop. All 1,243 files are concatenated into one DataFrame (~89,000 rows). Subsequent filter changes never re-read disk.
+**Step 1 — Startup cache**
+`data_loader.load_all_data()` runs once decorated with `@st.cache_data`. Scans all 5 daily folders using `pyarrow.dataset.dataset()` — a single batch operation, not a Python loop. All 1,243 files load into one DataFrame (~89,000 rows). Data is pre-split into per-map DataFrames for faster subsequent filtering.
 
-**Step 2 — Event decoding**  
-The `event` column is stored as raw bytes in parquet (`b'Position'`). It is decoded to a UTF-8 string during load. This is done once at load time, not at query time.
+**Step 2 — Event decoding**
+The `event` column is stored as raw bytes in parquet (`b'Position'`). Decoded to UTF-8 string at load time once — not at query time.
 
-**Step 3 — Bot classification**  
-Each row is tagged `is_bot = True/False` by checking whether `user_id` matches the UUID regex pattern. Human UUIDs are 36-character hyphenated hex strings. Bot IDs are short numeric strings (e.g. `"1440"`).
+**Step 3 — Bot classification**
+Each row tagged `is_bot = True/False` by checking whether `user_id` is a UUID (human) or short numeric string (bot). Human UUIDs are 36-character hyphenated hex strings. Bot IDs are numeric (e.g. `"1440"`).
 
-**Step 4 — Filter application**  
-When the user changes a sidebar control, Streamlit re-runs `app.py`. The cached DataFrame is sliced in-memory using pandas boolean indexing — map, date, match, event type, player type filters are applied in sequence.
+**Step 4 — Minimap loading**
+`image_utils.load_minimap()` loads each minimap via Pillow, resizes to exactly 1024×1024 (see Assumptions), converts to RGBA numpy array, and caches the result. Resize runs once per session — never per render.
 
-**Step 5 — Coordinate conversion**  
-`coordinate_utils.add_pixel_coords()` runs on the filtered subset (not the full dataset), adding `px_x` and `px_y` columns. It groups by `map_id` and applies the correct per-map formula vectorially.
+**Step 5 — Filter application**
+When user changes a sidebar control, Streamlit re-runs `app.py`. The cached per-map DataFrame is sliced in-memory using pandas boolean indexing — date, match, event type, player type filters applied in sequence on the already-small map subset.
 
-**Step 6 — Visualization**  
-`app.py:build_figure()` constructs a Plotly `go.Figure` with:
-- `go.Image` as the base layer (minimap loaded via Pillow → numpy array)
-- `go.Scatter` traces for event markers (one trace per event type)
+**Step 6 — Coordinate conversion**
+`coordinate_utils.add_pixel_coords()` runs on the filtered subset only, adding `px_x` and `px_y` columns vectorially per map group.
+
+**Step 7 — Figure construction**
+`build_figure()` constructs a Plotly figure with:
+- `go.Image` as the base layer (minimap numpy array)
+- `go.Scattergl` traces per event type (WebGL GPU-accelerated rendering)
 - `go.Heatmap` overlay when heatmap mode is active
 
-**Step 7 — Render**  
-`st.plotly_chart()` sends the figure to the browser. Plotly renders entirely client-side via WebGL.
+Decorated with `@st.cache_data(max_entries=10)` — identical filter states return instantly from cache.
+
+**Step 8 — Browser render**
+`st.plotly_chart()` sends the figure JSON (~10MB) to the browser. Plotly.js renders entirely client-side via WebGL.
 
 ---
 
-## Coordinate Mapping — Explained
+## Coordinate Mapping — The Tricky Part
 
-The game world uses a 3D coordinate system. Only `x` (east-west) and `z` (north-south) are used for 2D mapping. `y` is elevation and is ignored entirely.
+The game world uses a 3D coordinate system. Only `x` (east-west) and `z` (north-south) are used for 2D mapping. `y` is elevation — ignored entirely.
 
-The minimap images are 1024×1024 pixels. The challenge: mapping a world position like `(-301, -355)` to a pixel like `(78, 890)`.
+Minimap images are 1024×1024 pixels. The challenge: mapping a world position like `(-301, -355)` to a pixel like `(78, 890)`.
 
 **Formula:**
 ```
-u = (x - origin_x) / scale       # normalize to 0–1
-v = (z - origin_z) / scale       # normalize to 0–1
+u = (x - origin_x) / scale       # normalize to 0–1 range
+v = (z - origin_z) / scale       # normalize to 0–1 range
 
 pixel_x = u × 1024
-pixel_y = (1 - v) × 1024         ← Y is flipped
+pixel_y = (1 - v) × 1024         ← Y axis is flipped
 ```
 
-**Why the Y flip?** Image coordinates start at the top-left (y increases downward). Game-world Z increases going "up" (northward). Without the flip, the map would be rendered upside-down.
+**Why the Y flip?** Image coordinates start at top-left — y increases downward. Game-world Z increases northward (upward). Without the flip the entire map renders upside-down.
 
-**Per-map configuration** (from Player_data/README.md):
+**Verified against README example:**
+World `(-301.45, -355.55)` → pixel `(78, 890)` ✓ Exact match confirmed in smoke test.
+
+**Per-map configuration:**
 
 | Map | Scale | Origin X | Origin Z |
-|-----|-------|----------|----------|
+|---|---|---|---|
 | AmbroseValley | 900 | −370 | −473 |
 | GrandRift | 581 | −290 | −290 |
 | Lockdown | 1000 | −500 | −500 |
 
-This config lives in `coordinate_utils.MAP_CONFIG` — the single source of truth. It is used by both `world_to_pixel()` (single-point conversion) and `add_pixel_coords()` (vectorized batch conversion).
-
----
-
-## Tech Stack Decisions
-
-### Python + Streamlit vs React
-Streamlit was chosen for speed of execution. With 1–2 days to build, a React app would spend half that time on boilerplate (bundler config, state management, API layer). Streamlit gives sidebar filters, sliders, file serving, and a live URL from Python alone. The tradeoff is less control over UI polish — but a working tool beats a beautiful skeleton.
-
-### PyArrow Dataset vs pandas `read_parquet` loop
-`pyarrow.dataset.dataset()` scans a collection of files as a single dataset object, enabling vectorized reads with column pushdown filtering. A Python `for` loop calling `pq.read_table()` on each file adds ~1,243 round-trips of overhead. In practice this is ~3× faster on this dataset.
-
-### Plotly vs D3 or Matplotlib
-Plotly was the only library that handles both requirements with one API: placing scatter markers on top of an image as a base layer, and rendering density heatmaps with opacity. Matplotlib lacks the interactivity. D3 requires writing JavaScript. Plotly does both in Python and integrates directly with `st.plotly_chart`.
-
-### Load-all vs Lazy Loading
-All data is loaded on startup and cached. The filtered result is always a pandas slice of the same in-memory DataFrame — no disk I/O after the initial load. The tradeoff is a slower first load (~10–15s) but near-instant filter responses. Given the use case (a Level Designer actively exploring the data), fast filter response was prioritized over fast startup.
-
-### Streamlit Community Cloud vs Railway/Heroku
-Streamlit Community Cloud is free forever for one public app and deploys directly from a GitHub repo. It requires zero infrastructure knowledge. Railway and Render have free tiers but impose build complexity and sleep timeouts. For this assignment, zero-friction deployment was the right call.
+Single source of truth lives in `coordinate_utils.MAP_CONFIG`.
 
 ---
 
 ## Assumptions Made
 
-- `February_14` is a partial day (per README). It is included but not weighted differently.
-- Files with no `.parquet` extension are valid parquet files — the format is identified by magic bytes, not extension.
-- The `y` column (elevation) is intentionally excluded from all 2D visualizations.
-- `ts` values represent elapsed milliseconds within a match, not wall-clock timestamps.
-- Any file that raises an exception during load is silently skipped (corrupted files are treated as missing data, not errors).
+**Minimap dimensions** — README states all minimaps are 1024×1024. Actual dimensions discovered during build: AmbroseValley was 4320×4320, Lockdown was 9000×9000. All images resized to 1024×1024 at load time via `image_utils.py`. Without this fix the Plotly figure JSON exceeded 169MB causing browser Out of Memory crashes. Peak memory went from 897MB → 38MB after the fix.
+
+**Timestamp units** — The `ts` column is stored as `datetime64[ms]` in parquet but underlying values represent Unix seconds not milliseconds. A `// 1_000_000` division in the original loader collapsed both `ts_min` and `ts_max` to the same value (1770), making timeline duration = 0 and the slider non-functional. Fixed by storing as `int64` seconds directly.
+
+**Kill event coordinates** — BotKill and Kill event coordinates record where the eliminated entity died, not where the attacker was standing. A BotKill marker appearing without nearby human Position dots is expected — the human player may have been firing from range. This is a data design decision in the telemetry system, not a mapping error.
+
+**February 14 partial day** — Included as-is, not weighted differently. All three insights are consistent across all 5 days including the partial day.
+
+**Bot classification** — UUID `user_id` = human, numeric `user_id` = bot. Verified against README and confirmed by event type correlation.
+
+**Corrupted files** — Any file raising an exception during load is silently skipped. Treated as missing data, not errors.
 
 ---
 
-## Tradeoffs Summary
+## Major Tradeoffs
 
-| Decision | Chosen | Gave Up |
-|----------|--------|---------|
-| Streamlit vs React | Faster build, instant deploy | UI polish + fine layout control |
-| Load-all on startup | Fast filter response | Slower cold start (~15s) |
-| Plotly vs D3 | Simple code, works in Streamlit | Custom rendering flexibility |
-| Single master DataFrame | Easy filtering logic | Higher peak memory usage |
-| Streamlit Cloud vs Railway | Zero config, always free | More compute, custom domains |
-| PyArrow dataset vs loop | 3× faster file loading | Slightly more complex code |
+| Decision | Chosen | Gave Up | Why |
+|---|---|---|---|
+| Streamlit vs React | Streamlit | UI polish, layout control | 5 day build — Streamlit ships in hours not days |
+| Load-all vs lazy load | Load-all on startup | Slower cold start | Fast filter response matters more for exploratory sessions |
+| Plotly Scattergl vs D3 | Plotly Scattergl | Custom rendering flexibility | WebGL built-in, heatmap support, native Streamlit integration |
+| PyArrow dataset vs loop | PyArrow batch | Slightly more complex code | 3× faster file loading across 1,243 files |
+| Per-map pre-split | Pre-split DataFrame | More memory | First filter is always map — eliminates 68% of rows before any user filter |
+| Scattergl vs Scatter | Scattergl | Some marker symbol options | GPU rendering — 10-50× faster for large point counts |
+| Scroll zoom re-enabled | Zoom on | Potential slider conflict | Level Designers need zoom to investigate specific map zones |
+| Streamlit Cloud vs Railway | Streamlit Cloud | More compute, custom domain | Zero config, always free, auto-deploys from GitHub |
+
+---
+
+## Performance Notes
+
+**The memory crash we solved:** Initial Plotly figure JSON was 169MB because minimap images were 4–9× larger than documented in the README. Peak memory hit 897MB before any scatter points were added. After resizing to 1024×1024 at load time: figure JSON dropped to ~10MB, peak memory to 38MB — a 96% reduction.
+
+**Render latency:** Python-side filtering runs in 5–10ms. Remaining latency is Plotly figure serialization (~10MB JSON) and browser-side WebGL rendering. This is a client-side cost that cannot be eliminated without changing the rendering approach entirely. Acceptable for a data exploration tool used in deliberate analytical sessions, not real-time interaction.
+
+**Scattergl rendering artifacts:** Triangle marker symbols in Scattergl's WebGL renderer produce edge artifacts (white dust particles) at certain opacity levels. Fixed by removing the white outline from triangle traces specifically — circles and squares retain the white outline for visibility against varied map backgrounds.
+
+---
+
+## Supporting Documentation
+
+- [Functional Requirements](Docs/Functional%20requirements.docx) — full FR list with priority stack
+- [User Journey](Docs/User%20flows_journey%20maps.docx) — Level Designer investigation modes and decision points
