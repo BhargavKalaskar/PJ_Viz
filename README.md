@@ -4,6 +4,10 @@ A browser-based tool for Level Designers to explore 5 days of production gamepla
 
 **Live Tool:** https://3du9geedssvn6dwe9xjhvk.streamlit.app/
 
+**Walkthrough Video:** https://drive.google.com/file/d/1SxL34bhgcd24-HICZnI9HPtguLOw0WrR/view?usp=sharing
+
+> ⚠️ **Please lower your volume before watching** — the microphone was very sensitive during recording and the audio is loud. Better safe than sorry!
+
 ---
 
 ## What Problem Does This Solve?
