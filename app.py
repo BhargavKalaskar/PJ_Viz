@@ -32,9 +32,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_ROOT = Path(BASE_DIR) / "Player_data"
 
 MINIMAP_FILES: dict[str, str] = {
-    "AmbroseValley": os.path.join(BASE_DIR, "Player_data", "minimaps", "AmbroseValley_Minimap.png"),
-    "GrandRift":     os.path.join(BASE_DIR, "Player_data", "minimaps", "GrandRift_Minimap.png"),
-    "Lockdown":      os.path.join(BASE_DIR, "Player_data", "minimaps", "Lockdown_Minimap.jpg"),
+    "AmbroseValley": "AmbroseValley",
+    "GrandRift":     "GrandRift",
+    "Lockdown":      "Lockdown",
 }
 
 # Visual encoding for each event type (FR-3.2)
