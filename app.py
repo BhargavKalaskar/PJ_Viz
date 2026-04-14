@@ -227,6 +227,15 @@ with st.sidebar:
     st.sidebar.markdown("🎨 **Color** → Red: Combat | Purple: Storm | Gold: Loot")
     st.sidebar.markdown("🔷 **Shape** → Circle: Human | Triangle: Bot involved | Square: Killed by bot")
 
+    st.sidebar.markdown('---')
+    st.sidebar.markdown('''
+<div style="padding: 0.5rem 0; color: #888; font-size: 0.75rem;">
+    <p style="margin: 0;">Built by <strong style="color: #ccc;">Bhargav Kalaskar</strong></p>
+    <p style="margin: 0.2rem 0 0 0;">📧 bhargavak246@gmail.com</p>
+    <p style="margin: 0.2rem 0 0 0;">🔗 <a href="https://www.linkedin.com/in/bhargav-kalaskar/" style="color: #FF4B4B;">LinkedIn</a></p>
+</div>
+''', unsafe_allow_html=True)
+
 # ---------------------------------------------------------------------------
 # Filter dataframe
 # ---------------------------------------------------------------------------
